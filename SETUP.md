@@ -92,13 +92,60 @@ python3.11 -m venv /workspace/isaac/venv
 `/workspace` is also the only persistent mount — the container filesystem is
 wiped on restart, so this placement solves capacity and persistence together.
 
+### Two gotchas that cost real time
+
+**1. Vulkan loader missing, not the ICD.** Kit fails with
+`[Error] [omni.physx.plugin] CUDA libs are present, but no suitable CUDA GPU was
+found!` even though `nvidia-smi` shows the GPU. The cause is that `libvulkan1`
+is not installed; the NVIDIA ICD already exists at `/etc/vulkan/icd.d/`.
+
+```bash
+apt-get install -y libvulkan1 vulkan-tools
+vulkaninfo --summary | grep deviceName      # must list exactly ONE device
+```
+
+Do **not** add a second ICD under `/usr/share/vulkan/icd.d/`. Two NVIDIA ICDs
+make the loader enumerate the same GPU twice and Kit then errors with
+`Multiple Installable Client Drivers (ICDs) are found for the same GPU ...
+leads to instability or crash`.
+
+**2. A clean exit is not a passing render test.** `app.update()` advances the
+app but never triggers a Replicator capture, so `annotator.get_data()` returns
+an empty `(0,)` array while the process still exits 0. Drive captures with
+`rep.orchestrator.step()` and assert on pixel content:
+
+```python
+for _ in range(5):
+    rep.orchestrator.step(rt_subframes=8)
+img = np.asarray(rgb.get_data())
+assert img.any(), "renderer produced an all-black frame"
+```
+
+Verified good on this pod: `rgb_shape=(240, 320, 4)`, `rgb_mean=63.7`,
+`unique_colors=134`.
+
 ### Start the UI
 
 ```bash
 VNC_PASSWORD='something-real' bash /workspace/start-isaac-ui.sh
 ```
 
-Then open `https://<POD_ID>-8888.proxy.runpod.net`.
+Then either open the pod's **Port 8888** link in the RunPod console, or tunnel
+it to localhost, which is encrypted end to end where the RunPod proxy is plain
+HTTP:
+
+```bash
+ssh -N -L 8080:localhost:8888 -p <SSH_PORT> root@<POD_IP>
+# then http://localhost:8080/vnc.html
+```
+
+**Confirmed working:** Isaac Sim Full 5.1.0, RTX - Real-Time renderer,
+118 FPS / 8.4 ms frame time, GPU reported in-app as
+`NVIDIA GeForce RTX 4090: 1.1 GiB used, 21.0 GiB available`.
+
+Harmless errors on startup: the ROS 2 bridge fails (ROS 2 Jazzy is not
+installed and is not needed), and audio device warnings (no sound card in the
+container).
 
 `pod/start-isaac-ui.sh` serves noVNC on **8888**, taking the port from Jupyter,
 because 8888 is the only HTTP port this pod exposes and RunPod's proxy does not
