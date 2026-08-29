@@ -30,72 +30,113 @@ serve it over a **single HTTP port** with noVNC. No UDP, no ICE, no TURN.
 **3. The Omniverse Launcher is dead.** Retired 1 Oct 2025. Any tutorial telling
 you to install it is stale. Distribution is now GitHub + NGC containers.
 
-## Why we build our own image
+## The build constraint that shapes everything
 
-The known-good community recipe pins **Isaac Sim 4.0.0**, because 5.x/6.x run as
-an unprivileged user with a read-only `/usr` — you cannot `apt-get install` a
-desktop into a *running* 6.x container.
+**RunPod Pods cannot build Docker images.** Pods *are* containers and there is no
+Docker daemon inside them — this is a documented RunPod limitation, not a quirk
+of your pod. So "copy a Dockerfile up and build it" is not available.
 
-That limit only applies at runtime. At **build** time we are root, so
-`docker/Dockerfile` layers the desktop onto the current **6.0.1** image instead
-of starting a new project two years behind.
+That fact explains the community recipe's Isaac **4.0.0** pin, which looks
+arbitrary until you connect it:
 
-Tradeoff: the 4.0.0 recipe is battle-tested and ours is not. If the build fights
-you, falling back to 4.0.0 is a legitimate move, not a defeat.
+| Isaac version | Runs as | Can you install a desktop at runtime? |
+|---|---|---|
+| 4.0.0 | root | **Yes** — this is why the recipe works |
+| 5.1+ / 6.x | UID 1234, non-root, read-only `/usr` | No |
 
-## Setup
+On a platform where you cannot build, and an image that runs unprivileged, there
+is no way to add a desktop to Isaac 6.x *on the pod*. The version pin is
+load-bearing.
 
-### 1. NGC account and API key (free)
+So there are two paths, and they are not equal effort.
 
-The Isaac Sim container is free but **gated behind authentication**.
+---
 
-1. Sign up at <https://developer.nvidia.com> and generate an NGC API key.
-2. On the pod, log in to the registry. The username is the literal
-   string `$oauthtoken` — not your email:
+## Path A — get a working UI today (recommended first)
+
+Isaac Sim 4.0.0, desktop installed at runtime, one HTTP port. Proven recipe.
+
+### A1. Deploy a pod with the right image
+
+Your current pod probably will not work as-is unless it was already deployed
+from an Isaac Sim image. Deploy a new one:
+
+- **Image:** `nvcr.io/nvidia/isaac-sim:4.0.0`
+  (or the community template `Isaac-Sim-Official`, ID `4qyomso891`)
+- **GPU:** RTX 4090, RTX A6000, A40, or L40S.
+  **Not** RTX 5090 / RTX PRO 6000 — Blackwell postdates Isaac 4.0.0 and the
+  viewport renders permanently grey.
+- **Expose HTTP port:** `8080`
+- **Container disk:** 60 GB+ (the image alone is ~10 GB compressed)
+- **Volume:** 50 GB+ mounted at `/workspace`
+- **Environment:**
+  - `ACCEPT_EULA=Y`
+  - `PRIVACY_CONSENT=Y`
+  - `VNC_PASSWORD=<pick a real password>`
+
+`nvcr.io` requires authentication even though the image is free. Add NGC
+container-registry credentials in RunPod settings: username is the literal
+string `$oauthtoken`, password is your NGC API key from
+<https://developer.nvidia.com>.
+
+### A2. Start the desktop
+
+In the pod's web terminal:
 
 ```bash
-docker login nvcr.io
-# Username: $oauthtoken
-# Password: <your NGC API key>
+curl -fsSL https://raw.githubusercontent.com/Sa3d-99/runpod_noVNC_isaac_sim/main/bootstrap.sh | bash
 ```
 
-### 2. Expose an HTTP port on the pod
+This downloads the repo to `/workspace/runpod_noVNC_isaac_sim` and runs
+`novnc.sh`, which starts Xvfb → fluxbox → x11vnc → websockify → Isaac Sim.
+It is a third-party script; it was reviewed and is clean, but it is not NVIDIA's.
+To read before running, drop the `| bash`.
 
-In the RunPod console, add **8080** as an exposed **HTTP** port. If the pod is
-already running you may need to stop it to edit ports. RunPod will then serve it
-at `https://<POD_ID>-8080.proxy.runpod.net`.
+`rm -rf` on `/workspace/runpod_noVNC_isaac_sim` runs without confirmation, so do
+not put your own work in that directory.
 
-Do **not** bother exposing 47998/UDP. It will not work.
+**Set `VNC_PASSWORD`.** Unset, the script runs `x11vnc -nopw` and anyone with
+the pod URL gets full mouse-and-keyboard control of the session.
 
-### 3. Build and run
+### A3. Open it
 
-Copy `docker/` to the pod (`/workspace/docker`), then:
+`https://<POD_ID>-8080.proxy.runpod.net`
+
+First launch takes several minutes while shaders compile. A grey viewport for
+the first few minutes is normal; a *permanently* grey one means a GPU mismatch
+(usually Blackwell on 4.0.0).
+
+To restart later without re-bootstrapping:
 
 ```bash
-cd /workspace/docker
-docker build -t car-twin:latest .
-
-docker run --gpus all -d --name car-twin \
-  -p 8080:8080 \
-  -e ACCEPT_EULA=Y \
-  -e PRIVACY_CONSENT=Y \
-  -e VNC_PASSWORD='pick-a-real-password' \
-  -v /workspace/assets:/workspace/assets \
-  car-twin:latest
+cd /workspace/runpod_noVNC_isaac_sim && bash novnc.sh   # start
+cd /workspace/runpod_noVNC_isaac_sim && bash stop.sh    # stop
 ```
 
-`ACCEPT_EULA=Y` accepts the NVIDIA Isaac Sim license. Set `VNC_PASSWORD` —
-without it the desktop has **no authentication**, and the proxy URL is the only
-thing standing between your session and the internet.
+---
 
-### 4. Open it
+## Path B — Isaac Sim 6.0.1 (build off-pod, deploy from registry)
 
-Browse to `https://<POD_ID>-8080.proxy.runpod.net`. First launch takes several
-minutes — Isaac compiles shaders before the viewport appears. A grey or black
-viewport for the first few minutes is expected; a *permanently* grey viewport
-means a GPU/driver mismatch.
+Only worth doing once Path A has proven the pod, GPU, and workflow. Starting a
+new project on a 2024 Isaac build is a real cost, but so is fighting a toolchain
+before you have ever seen the viewport.
 
-Watch progress with `docker logs -f car-twin`.
+Since the pod cannot build, build elsewhere and deploy *from* the result:
+
+1. Build `docker/Dockerfile` off-pod — GitHub Actions (see
+   `.github/workflows/build-image.yml`) or any x86_64 Linux box with Docker.
+   **Not your Mac:** it is arm64 and Isaac is amd64; emulated cross-build of a
+   ~30 GB image is impractical.
+2. Push to a registry (GHCR works; your token has `write:packages`).
+3. Deploy a RunPod pod from that image, exposing HTTP 8080.
+
+`docker/Dockerfile` installs the desktop as root at **build** time, which
+sidesteps the read-only `/usr` problem entirely — the constraint is runtime-only.
+
+**Unverified.** This image has not been built or run yet. Disk is the likely
+failure point: the Isaac base is ~10 GB compressed and considerably larger
+extracted, which is tight for a standard GitHub-hosted runner even after the
+disk-reclaim step in the workflow.
 
 ## Next step for the car itself: CAD to OpenUSD
 

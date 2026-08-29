@@ -1,0 +1,48 @@
+name: Build Isaac Sim + noVNC image
+
+# Path B only. RunPod pods cannot build images, so we build here and deploy
+# the pod FROM the result. UNVERIFIED - disk space on hosted runners is tight.
+on:
+  workflow_dispatch:
+    inputs:
+      isaac_version:
+        description: Isaac Sim base image tag
+        default: "6.0.1"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # The Isaac base is ~10GB compressed and much larger extracted.
+      # Without this the runner almost certainly fills up.
+      - name: Reclaim disk space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
+
+      - name: Report free space
+        run: df -h /
+
+      - name: Log in to NGC
+        run: echo "${{ secrets.NGC_API_KEY }}" | docker login nvcr.io -u '$oauthtoken' --password-stdin
+
+      - name: Log in to GHCR
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Build
+        run: |
+          docker build \
+            --build-arg ISAAC_VERSION=${{ inputs.isaac_version }} \
+            -t ghcr.io/${{ github.repository_owner }}/car-twin:${{ inputs.isaac_version }} \
+            docker/
+
+      - name: Push
+        run: docker push ghcr.io/${{ github.repository_owner }}/car-twin:${{ inputs.isaac_version }}
