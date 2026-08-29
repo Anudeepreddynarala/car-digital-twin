@@ -1,0 +1,34 @@
+# OS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+pylibs/
+
+# Large 3D assets - keep these out of git, use the pod volume / LFS
+assets/
+*.usd
+*.usda
+*.usdc
+*.usdz
+*.fbx
+*.obj
+*.step
+*.stp
+*.igs
+*.iges
+*.CATPart
+*.CATProduct
+
+# Renders / captures
+outputs/
+renders/
+*.mp4
+*.exr
+
+# Secrets - never commit NGC or GitHub credentials
+.env
+*.key
+ngc_api_key*
