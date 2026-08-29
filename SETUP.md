@@ -48,13 +48,80 @@ On a platform where you cannot build, and an image that runs unprivileged, there
 is no way to add a desktop to Isaac 6.x *on the pod*. The version pin is
 load-bearing.
 
-So there are two paths, and they are not equal effort.
+So there are three paths. The one we are actually using is Path C, which only
+became visible after inspecting the pod.
 
 ---
 
-## Path A — get a working UI today (recommended first)
+## Path C — pip install onto a standard root pod  ← **the one we're using**
 
-Isaac Sim 4.0.0, desktop installed at runtime, one HTTP port. Proven recipe.
+**Verified working on this hardware.** The insight: the 4.0.0 pin exists because
+the *official container* runs unprivileged. A standard RunPod Jupyter/PyTorch
+template runs as **root**, so that constraint simply does not apply — `apt-get
+install xvfb x11vnc novnc` just works, and Isaac Sim installs from pip.
+
+Two consequences worth stating plainly:
+
+- **No NGC API key needed.** `pypi.nvidia.com` is open, no auth. The registry
+  credential that blocks Paths A and B is irrelevant here.
+- **Isaac Sim 5.1.0 (Jan 2026)** instead of 4.0.0 (Jun 2024), with no redeploy.
+
+### Verified pod baseline
+
+| Check | Required | This pod |
+|---|---|---|
+| User | root, to `apt install` | root (uid 0) |
+| OS / GLIBC | 2.35+ | Ubuntu 24.04.3, GLIBC 2.39 |
+| Python | exactly 3.11 for Isaac 5.x | 3.11 present (system default is 3.12) |
+| Driver | 580.65.06+ | 580.159.04 |
+| GPU | RT cores | RTX 4090, 24 GB |
+
+### The disk trap
+
+`/` is a **30 GB overlay**. Isaac with `[all,extscache]` will not fit. Everything
+large must go to `/workspace`:
+
+```bash
+export TMPDIR=/workspace/tmp
+export PIP_CACHE_DIR=/workspace/.pip-cache
+python3.11 -m venv /workspace/isaac/venv
+/workspace/isaac/venv/bin/pip install "isaacsim[all,extscache]==5.1.0" \
+  --extra-index-url https://pypi.nvidia.com
+```
+
+`/workspace` is also the only persistent mount — the container filesystem is
+wiped on restart, so this placement solves capacity and persistence together.
+
+### Start the UI
+
+```bash
+VNC_PASSWORD='something-real' bash /workspace/start-isaac-ui.sh
+```
+
+Then open `https://<POD_ID>-8888.proxy.runpod.net`.
+
+`pod/start-isaac-ui.sh` serves noVNC on **8888**, taking the port from Jupyter,
+because 8888 is the only HTTP port this pod exposes and RunPod's proxy does not
+care what is behind it. Adding 8080 instead would require a pod stop.
+
+### Gotcha: SSH keys are baked in at pod creation
+
+RunPod writes `authorized_keys` from a `PUBLIC_KEY` env var fixed when the pod is
+**created**. Adding a key in Settings afterward does nothing for an existing pod,
+and **restarting does not help** — the entrypoint re-runs with the same baked-in
+value. Append it via the web terminal instead:
+
+```bash
+mkdir -p ~/.ssh && echo '<your pubkey>' >> ~/.ssh/authorized_keys
+chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys
+```
+
+---
+
+## Path A — official Isaac 4.0.0 container (fallback)
+
+Isaac Sim 4.0.0, desktop installed at runtime, one HTTP port. Proven recipe,
+but two years old and needs an NGC key. Use only if Path C fails.
 
 ### A1. Deploy a pod with the right image
 
