@@ -1,92 +1,117 @@
-# Car Digital Twin — NVIDIA Omniverse / Isaac Sim on RunPod
+# Car Digital Twin — Isaac Sim
 
-Software-in-the-loop digital twin of a car: the vehicle and all its sensors live
-inside Omniverse. A sensor rig drives through a labelled scene and reports what
-it sees — **class + range per object** ("car at 10 m, tree at 20 m") — as the
+Software-in-the-loop digital twin of a car. The vehicle and all its sensors live
+inside NVIDIA Omniverse: a rig drives through a labelled scene and reports what
+it sees — **class + range per object** ("car at 21 m, tree at 34 m") — as the
 foundation for a Tesla-style perception stack.
 
-**Status: working.** Isaac Sim 5.1.0 runs on a RunPod RTX 4090, GUI in the
-browser, perception validated against ground truth.
+![Driving demo with live detection rays](docs/detection-rays.png)
+
+*Yellow ego car driving; green rays are live detections to each object — red and
+blue cars, trees, a pedestrian, a building. Every ray is one row of the console
+readout.*
+
+**Status: working.** Isaac Sim 5.1.0, perception validated against ground truth.
 
 ---
 
-## Start here
+## Run it in 3 commands
 
-| If you want to… | Read |
-|---|---|
-| Stand up the pod from scratch | **[SETUP.md](SETUP.md)** |
-| Understand *why* it is built this way | [SETUP.md § constraints](SETUP.md) |
-| Just run something | [Quick start](#quick-start) below |
-
-## Quick start
-
-Assumes a pod already provisioned per [SETUP.md](SETUP.md).
+**Have an RTX GPU?** → [LOCAL.md](LOCAL.md) — native window, no cloud needed.
 
 ```bash
-# 1. browser GUI  (serves noVNC on the pod's one HTTP port)
-VNC_PASSWORD='pick-one' bash /workspace/start-isaac-ui.sh
-
-# 2. tunnel it to localhost (encrypted; the RunPod proxy is plain HTTP)
-ssh -N -L 8080:localhost:8888 -p <SSH_PORT> root@<POD_IP>
-#    -> http://localhost:8080/vnc.html
-
-# 3. watch a car drive and detect objects, in the GUI
-DISPLAY=:99 /workspace/isaac/venv/bin/python /workspace/drive_demo.py
-
-# 4. or headless, for numbers only (much faster)
-/workspace/isaac/venv/bin/python /workspace/perception_demo.py --headless
+python3.11 -m venv ~/isaac-venv
+~/isaac-venv/bin/pip install "isaacsim[all,extscache]==5.1.0" --extra-index-url https://pypi.nvidia.com
+~/isaac-venv/bin/python pod/drive_demo.py
 ```
 
-## What's here
+**No GPU?** → [SETUP.md](SETUP.md) — rent one on RunPod (~$0.35/hr for a 4090).
 
-| Path | What it is |
+No NGC account or API key required. `pypi.nvidia.com` is unauthenticated.
+
+## Requirements
+
+An **RTX GPU with RT cores**. A100, H100 and H200 do **not** work — they are
+compute-only and unsupported by the Omniverse RTX renderer, despite being the
+most expensive options on any cloud menu. RTX 4080/4090, A6000, A40 and L40S are
+all fine.
+
+Python **exactly 3.11**, driver 580.65.06+, ~40 GB disk.
+
+## What the demos do
+
+| Script | What it does |
 |---|---|
-| `SETUP.md` | Full runbook + every constraint that bit us |
-| `pod/start-isaac-ui.sh` | Xvfb → fluxbox → x11vnc → noVNC → Isaac Sim |
-| `pod/drive_demo.py` | **Visible** demo: car drives, chase cam, live detections |
-| `pod/perception_demo.py` | Headless: range + class per object, validated |
-| `docker/` | Path B only — building an image off-pod. Not used. |
-| `renting server with UI.pdf` | Original reference. **Superseded**, see SETUP.md |
+| `pod/drive_demo.py` | **Visible.** Car drives, chase camera follows, detection rays drawn live in the viewport |
+| `pod/perception_demo.py` | **Headless.** Prints class + range per object each step. Much faster |
 
-## Verified working
+Both build their own scene — no asset downloads needed.
 
-- Isaac Sim **Full 5.1.0**, RTX - Real-Time renderer
-- **RTX 4090**, driver 580.159.04, reported in-app as `1.1 GiB used, 21.0 GiB available`
-- **118 FPS** / 8.4 ms frame time in the browser GUI
-- Perception validated: sensor at x=2 m reports a car placed at x=10 m as **8.0 m**;
-  x=6 → 4.1 m; x=10 → 0.9 m; object drops out once passed
+Validated against ground truth: with a car placed at x=10 m, a sensor at x=2 m
+reports **8.0 m**; at x=6 m → **4.1 m**; at x=10 m → **0.9 m**; the object drops
+out once passed.
+
+## What sensors is this actually using?
+
+**Right now: a camera plus the simulator's ground truth — not radar, not LiDAR.**
+Detections come from Replicator's `bounding_box_3d` annotator, which hands over
+each object's class and world position directly. That is *perfect* perception,
+i.e. cheating.
+
+This is deliberate. It builds the visualisation and gives you a **reference to
+score real sensors against** — something you cannot get on a real vehicle without
+survey-grade equipment. Real RTX radar and LiDAR come next, measured against it.
+
+You can already see why multiple sensors matter: the camera's ~47° FOV means an
+object more than ~23.5° off-axis is invisible. Watch the pedestrian in the demo —
+undetected until the car is nearly alongside. In a real car that is someone
+stepping off the kerb.
 
 ## Roadmap
 
-- [x] Pod, GPU, Vulkan, Isaac Sim, browser GUI
-- [x] Range + class per object (ground-truth annotator)
-- [x] Visible driving demo with chase camera
-- [ ] RTX radar + stereo cameras, compared against ground truth
-- [ ] YOLO on the camera feed (PyTorch 2.7 already installed)
-- [ ] Traffic signs / signals / lanes — **blocked on road content**, see below
+- [x] Isaac Sim running, GUI, GPU verified
+- [x] Range + class per object, validated
+- [x] Visible driving demo with detection rays
+- [ ] RTX radar + stereo cameras, scored against ground truth
+- [ ] YOLO on the camera feed (PyTorch 2.7 ships with the install)
+- [ ] Traffic signs / signals / lanes — **blocked on road content**
 
 ### The one structural risk
 
 Isaac Sim ships **no drivable road content** — its environments are warehouses,
 kitchens and hospital corridors. Signs, signals and lane markings need a scene
-that contains them. Options, roughly by effort: hand-build a test road; buy
-third-party SimReady assets; import OpenDRIVE (community, unofficial); or run
-**CARLA** for scenario content and keep Isaac for sensor fidelity.
+that contains them. Options: hand-build a test road; buy third-party SimReady
+assets; import OpenDRIVE (community, unofficial); or run **CARLA** for scenario
+content and keep Isaac for sensor fidelity.
 
-CARLA is free (MIT; assets CC-BY) and is *easier* to host here than Isaac —
-its client-server protocol is plain TCP, so the UDP problem below does not apply.
-The tradeoff is fidelity: CARLA's radar is explicitly a non-raytraced placeholder
-and its LiDAR is plain ray-casting, where Isaac's RTX sensors are physically based.
+CARLA is free (MIT; assets CC-BY) and is *easier* to host in the cloud than Isaac,
+since its protocol is plain TCP. The tradeoff is fidelity: CARLA's radar is
+explicitly a non-raytraced placeholder and its LiDAR is plain ray-casting, where
+Isaac's RTX sensors are physically based.
 
-## Three things that will waste your day if you don't know them
+## Four things that will waste your day
 
-1. **RunPod pods cannot build Docker images** — no daemon inside. Build off-pod
-   and deploy *from* the image, or install with pip as we do.
-2. **"no suitable CUDA GPU" means the Vulkan *loader* is missing**, not the
-   driver. `apt-get install libvulkan1`. Do not add a second ICD — the NVIDIA one
-   already exists at `/etc/vulkan/icd.d/`, and two makes Kit error on duplicates.
-3. **`rep.orchestrator.step()` drives captures.** `world.step(render=True)`
-   advances the sim but never triggers the annotator, so `get_data()` returns an
-   empty array *and the process still exits 0*. Assert on content, not exit code.
+1. **`no suitable CUDA GPU` means the Vulkan *loader* is missing**, not the driver.
+   `apt-get install libvulkan1`. Do not add a second ICD — the NVIDIA one already
+   exists at `/etc/vulkan/icd.d/`, and two makes Kit refuse to start.
+2. **`rep.orchestrator.step()` drives captures.** `world.step(render=True)`
+   advances the sim but never triggers the annotator, so `get_data()` returns
+   empty *and the process still exits 0*. Assert on content, not exit code.
+3. **`/OmniverseKit_Persp` is not a prim.** `GetPrimAtPath` returns invalid and
+   your camera code silently no-ops, leaving a blank viewport over a perfectly
+   correct scene. Make your own camera and set `get_active_viewport().camera_path`.
+4. **RunPod pods cannot build Docker images** — no daemon inside. Install with
+   pip, or build off-pod and deploy from the image.
 
-Full detail in [SETUP.md](SETUP.md).
+## Docs
+
+| File | For |
+|---|---|
+| [LOCAL.md](LOCAL.md) | Running on your own desktop (Linux / Windows) |
+| [SETUP.md](SETUP.md) | Cloud setup on RunPod, and why each constraint exists |
+| [TEAM.md](TEAM.md) | Onboarding checklist + gotchas ranked by time lost |
+
+## Licence
+
+Scripts here are MIT. Isaac Sim itself is under NVIDIA's licence — the installer
+prompts for EULA acceptance (`OMNI_KIT_ACCEPT_EULA=YES` for non-interactive runs).
