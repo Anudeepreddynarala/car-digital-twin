@@ -21,5 +21,6 @@ work on RunPod, and the noVNC approach that does.
 - [x] GPU class verified (RTX-class, has RT cores)
 - [x] Browser-GUI approach chosen (noVNC over one HTTP port)
 - [ ] Image built and running on the pod
+- [x] GitHub repo + persistent auth wired up
 - [ ] Car CAD sourced and converted to OpenUSD
 - [ ] Twin scope locked (configurator vs. driving sim vs. telemetry)
