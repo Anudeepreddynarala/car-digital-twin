@@ -53,13 +53,13 @@ OBJECTS = [
 def main():
     stage = omni.usd.get_context().get_stage()
 
-    UsdLux.DistantLight.Define(stage, "/World/Sun").CreateIntensityAttr(3500.0)
-    UsdLux.DomeLight.Define(stage, "/World/Sky").CreateIntensityAttr(800.0)
+    UsdLux.DistantLight.Define(stage, "/World/Sun").CreateIntensityAttr(1200.0)
+    UsdLux.DomeLight.Define(stage, "/World/Sky").CreateIntensityAttr(150.0)
 
     ground = UsdGeom.Plane.Define(stage, "/World/Ground")
     ground.CreateWidthAttr(600.0); ground.CreateLengthAttr(600.0)
     ground.CreateAxisAttr("Z")
-    ground.CreateDisplayColorAttr([Gf.Vec3f(0.22, 0.22, 0.24)])
+    ground.CreateDisplayColorAttr([Gf.Vec3f(0.16, 0.16, 0.18)])
 
     # lane stripes so the motion is obvious
     for i in range(60):
@@ -103,15 +103,23 @@ def main():
     bbox3d = rep.AnnotatorRegistry.get_annotator("bounding_box_3d")
     bbox3d.attach(rp)
 
-    # Point the VIEWPORT camera at the car. Without this you get Isaac's
-    # default camera pose, which stares at empty ground - the scene is fine,
-    # you just cannot see it.
-    persp = stage.GetPrimAtPath("/OmniverseKit_Persp")
-    chase_op = None
-    if persp and persp.IsValid():
-        xf = UsdGeom.Xformable(persp)
-        xf.ClearXformOpOrder()
-        chase_op = xf.AddTransformOp()
+    # Point the VIEWPORT at the car. Do NOT rely on /OmniverseKit_Persp
+    # existing as a prim - it does not on this stage, and GetPrimAtPath then
+    # fails silently, leaving the default pose staring at empty ground.
+    # Make our own camera and tell the viewport to use it.
+    chase_cam = UsdGeom.Camera.Define(stage, "/World/ChaseCam")
+    chase_cam.CreateFocalLengthAttr(22.0)
+    chase_cam.CreateClippingRangeAttr(Gf.Vec2f(0.1, 10000.0))
+    chase_op = UsdGeom.Xformable(chase_cam.GetPrim()).AddTransformOp()
+    chase_op.Set(look_at_matrix((-14.0, -11.0, 7.0), (6.0, 0.0, 1.0)))
+
+    try:
+        from omni.kit.viewport.utility import get_active_viewport
+        vp = get_active_viewport()
+        vp.camera_path = "/World/ChaseCam"
+        print(f"viewport camera -> {vp.camera_path}", flush=True)
+    except Exception as e:
+        print(f"WARNING: could not set viewport camera: {e}", flush=True)
 
     rep.orchestrator.step(rt_subframes=2)   # warmup; first capture is empty
 
@@ -127,9 +135,7 @@ def main():
             rep.modify.pose(position=sensor, look_at=(x + 60.0, 0.0, 1.0))
 
         # chase cam: behind, beside and above the car, looking at it
-        if chase_op is not None:
-            eye = (x - 14.0, -11.0, 7.0)
-            chase_op.Set(look_at_matrix(eye, (x + 6.0, 0.0, 1.0)))
+        chase_op.Set(look_at_matrix((x - 14.0, -11.0, 7.0), (x + 6.0, 0.0, 1.0)))
 
         rep.orchestrator.step(rt_subframes=2)
 

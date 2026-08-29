@@ -84,7 +84,9 @@ renders 1:1 and you only see part of the window.
 | `Multiple ICDs found for the same GPU` | Two NVIDIA ICDs | Keep `/etc/vulkan/icd.d/` only; do **not** add one under `/usr/share` |
 | Annotator returns empty, exit code 0 | `world.step()` never triggers a capture | `rep.orchestrator.step()` |
 | Objects present but undetected | Outside the camera's ~47° FOV | Widen FOV, or add radar/LiDAR |
-| Viewport is blank but scene is fine | Viewport camera not pointed at anything | Set `/OmniverseKit_Persp` explicitly |
+| Viewport is blank but scene is fine | Viewport camera not pointed at anything | Make your own `UsdGeom.Camera` and set it via `get_active_viewport().camera_path`. **`/OmniverseKit_Persp` is not a prim on this stage** — `GetPrimAtPath` returns invalid and your camera code silently no-ops |
+| Everything washed out flat white | Lights overexposed | DistantLight ~1200 + DomeLight ~150, not 3500/800 |
+| Process dies the moment SSH returns | Backgrounding through SSH gets SIGHUP'd | `setsid nohup … < /dev/null &` — see `pod/run_drive.sh` |
 | `docker build` fails on the pod | RunPod pods have no Docker daemon | Build off-pod, or use pip |
 | First `orchestrator.step()` returns nothing | Render product not populated yet | Burn one warmup step |
 | ROS 2 bridge error on startup | ROS 2 Jazzy not installed | Harmless; ignore |
