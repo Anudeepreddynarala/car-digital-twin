@@ -113,6 +113,7 @@ Isaac's RTX sensors are physically based.
 
 | File | For |
 |---|---|
+| [GLOSSARY.md](GLOSSARY.md) | **New to this?** What Vulkan, OpenUSD, Kit, Replicator and the rest actually are |
 | [ARCHITECTURE.md](ARCHITECTURE.md) | How it works: OpenUSD, the sensor chain, and what is *not* real yet |
 | [LOCAL.md](LOCAL.md) | Running on your own desktop (Linux / Windows) |
 | [SETUP.md](SETUP.md) | Cloud setup on RunPod, and why each constraint exists |
