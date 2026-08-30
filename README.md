@@ -90,10 +90,10 @@ that contains them. Options: hand-build a test road; buy third-party SimReady
 assets; import OpenDRIVE (community, unofficial); or run **CARLA** for scenario
 content and keep Isaac for sensor fidelity.
 
-CARLA is free (MIT; assets CC-BY) and is *easier* to host in the cloud than Isaac,
-since its protocol is plain TCP. The tradeoff is fidelity: CARLA's radar is
-explicitly a non-raytraced placeholder and its LiDAR is plain ray-casting, where
-Isaac's RTX sensors are physically based.
+**Decision: staying on Isaac Sim.** The project's focus is high-fidelity
+sensors - physically based RTX radar and LiDAR - which is the one thing Isaac
+does better than the free alternatives. Measuring *range and size* needs no
+photorealistic content, so the missing-town problem does not apply.
 
 ## Four things that will waste your day
 
