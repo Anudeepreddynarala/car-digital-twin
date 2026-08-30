@@ -23,16 +23,41 @@ apt-get install -y -qq --no-install-recommends \
 ln -sf /usr/share/novnc/vnc.html /usr/share/novnc/index.html
 log "  apt done"
 
-log "STEP 2/5  Vulkan check"
+log "STEP 2/5  driver + Vulkan check"
+
+# Driver check FIRST - it is instant, and a too-old driver is the most common
+# cause of the Vulkan failure below. Verified working: 580.159.04.
+# Verified BROKEN: 570.195.03 (all libs present, CUDA fine, vkCreateInstance
+# still fails inside the driver). Filter for CUDA 13.0 when deploying to get 580+.
+DRV=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1)
+DRV_MAJOR=${DRV%%.*}
+log "  driver: ${DRV:-unknown}"
+if [ -n "$DRV_MAJOR" ] && [ "$DRV_MAJOR" -lt 580 ] 2>/dev/null; then
+    log "  WARNING: driver $DRV is below 580. Isaac Sim 5.1 wants 580.65.06+."
+    log "           Driver 570 has been observed to fail Vulkan init on RunPod"
+    log "           even with a complete library set. If the check below fails,"
+    log "           redeploy the pod filtering for CUDA 13.0 (-> driver 580+)."
+fi
+
 # Must be exactly ONE device. The NVIDIA ICD already ships at /etc/vulkan/icd.d/
 # - do NOT add another under /usr/share, or Kit refuses to start on duplicates.
-N=$(vulkaninfo --summary 2>/dev/null | grep -c "deviceName" || echo 0)
+N=$(vulkaninfo --summary 2>/dev/null | grep -c "deviceName"); N=${N:-0}
 vulkaninfo --summary 2>/dev/null | grep -E "deviceName|apiVersion" | head -2
 if [ "$N" -eq 1 ]; then
     log "  OK - exactly one Vulkan device"
 elif [ "$N" -eq 0 ]; then
     log "  ERROR - no Vulkan device. Isaac will fail with 'no suitable CUDA GPU'."
-    log "          Check the pod actually has a GPU: nvidia-smi"
+    log ""
+    log "  Diagnose in this order:"
+    log "    1. nvidia-smi                      - is there a GPU at all?"
+    log "    2. ls /etc/vulkan/icd.d/           - is the NVIDIA ICD present?"
+    log "    3. ldconfig -p | grep libvulkan    - is the loader installed?"
+    log "    4. vulkaninfo --summary            - read the actual loader error"
+    log ""
+    log "  If everything above looks CORRECT and it still fails, the driver"
+    log "  mount on this host is broken. Do not keep debugging - redeploy the"
+    log "  pod filtering for CUDA 13.0 to get driver 580+."
+    log "  Known good: 580.159.04.  Known bad: 570.195.03."
     exit 1
 else
     log "  ERROR - $N devices. Duplicate ICDs; Kit will refuse to start."
