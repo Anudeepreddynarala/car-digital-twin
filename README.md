@@ -27,6 +27,12 @@ python3.11 -m venv ~/isaac-venv
 
 **No GPU?** → [SETUP.md](SETUP.md) — rent one on RunPod (~$0.35/hr for a 4090).
 
+**Restarting a stopped pod?** `/workspace` survives, so the install does too:
+
+```bash
+VNC_PASSWORD='something' bash <(curl -fsSL https://raw.githubusercontent.com/Anudeepreddynarala/car-digital-twin/main/pod/bootstrap.sh)
+```
+
 No NGC account or API key required. `pypi.nvidia.com` is unauthenticated.
 
 ## Requirements

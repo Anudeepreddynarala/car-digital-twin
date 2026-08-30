@@ -67,6 +67,25 @@ DISPLAY=:99 /workspace/isaac/venv/bin/python /workspace/drive_demo.py
 In noVNC set **Settings → Scaling Mode → Local Scaling**, or a 1920×1080 desktop
 renders 1:1 and you only see part of the window.
 
+## Restarting after a pod stop
+
+`/workspace` **persists** across a stop/start; the container filesystem does not.
+So the ~30 GB Isaac Sim install survives, but apt packages (Xvfb, x11vnc, noVNC,
+libvulkan1) and `~/.ssh/authorized_keys` are wiped.
+
+One command restores everything and skips the big download:
+
+```bash
+VNC_PASSWORD='something' bash <(curl -fsSL https://raw.githubusercontent.com/Anudeepreddynarala/car-digital-twin/main/pod/bootstrap.sh)
+```
+
+It detects an existing `/workspace/isaac/venv` and reinstalls only what was lost
+(~1 min). On a fresh volume it does the full install instead.
+
+**Note:** a stop/start gives you a **new IP and SSH port**, and your SSH key is
+gone from the container. Re-add it via the web terminal (see §2) — RunPod only
+injects account keys into pods created *after* the key was added.
+
 ## 5. Conventions
 
 - **Write to `/workspace`.** It is the only persistent mount; the container
