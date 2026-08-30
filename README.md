@@ -89,6 +89,26 @@ i.e. cheating - kept deliberately as the scoring reference.
   semantic *class*; it needs `instance_segmentation` to separate objects.
 - **RTX LiDAR does not work.** See below.
 
+### RTX Radar: not usable in 5.1
+
+`IsaacSensorCreateRtxRadar` exists and creates a valid `OmniRadar` prim, but
+**Isaac Sim 5.1 ships no radar configs**. Rendering an unconfigured radar
+crashes Kit natively (no Python traceback - the py-spy dump shows only idle
+worker threads).
+
+The full sensor catalogue at
+`.../Assets/Isaac/5.1/Isaac/Sensors/` is:
+
+| Vendor | Type |
+|---|---|
+| HESAI, Ouster, SICK, Slamtec, Velodyne, ZVISION, NVIDIA examples | LiDAR |
+| Intel RealSense, Orbbec, Stereolabs ZED, LeopardImaging | depth camera |
+| Sensing, Tashan | camera |
+| **radar** | **none** |
+
+Note the depth cameras: RealSense, Orbbec and ZED are real hardware, and are
+what `depth_measure.py` simulates. That path is well supported; radar is not.
+
 ### RTX LiDAR: blocked
 
 Nine attempts, not working. `LidarRtx` accepts a config and silently produces a

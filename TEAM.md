@@ -113,6 +113,7 @@ injects account keys into pods created *after* the key was added.
 | Pod writes fail: `Disk quota exceeded` | Per-pod quota is far below the filesystem's advertised free space | `du -sh /workspace/*`, delete large dirs. Deleting many small files on the network volume is slow |
 | `pkill -f foo` kills your own shell | The pattern matches the ssh command containing it | Put the command in a script on disk (see `pod/run_*.sh`), and use `ps \| grep "[f]oo"` to check |
 | RTX lidar returns no points | Config never loads; `numCols=0` | Unsolved after 9 attempts - read `isaacsim/sensors/rtx/tests/test_lidar_rtx.py` first |
+| RTX radar crashes Kit natively | **5.1 ships no radar configs**; an unconfigured radar has no beam pattern | Not fixable from user code. Use the depth camera |
 
 ## Where the work goes next
 
