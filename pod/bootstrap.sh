@@ -19,24 +19,27 @@ apt-get update -qq
 apt-get install -y -qq --no-install-recommends \
     xvfb x11vnc fluxbox novnc websockify x11-utils xterm imagemagick \
     python3.11-venv python3.11-dev libvulkan1 vulkan-tools \
-    libgl1 libglu1-mesa libxrender1 libxext6 libsm6 >/dev/null 2>&1
+    libglvnd0 libgl1 libegl1 libglx0 libopengl0 \
+    libglu1-mesa libxrender1 libxext6 libsm6 >/dev/null 2>&1
+# libegl1 / libglx0 / libopengl0 are NOT optional. Without them vulkaninfo
+# reports 0 devices with "Could not get 'vkCreateInstance' ... for ICD
+# libGLX_nvidia.so.0", even though every NVIDIA lib is mounted, CUDA works,
+# and ldd reports no missing deps. Installing them fixes it immediately.
 ln -sf /usr/share/novnc/vnc.html /usr/share/novnc/index.html
 log "  apt done"
 
 log "STEP 2/5  driver + Vulkan check"
 
-# Driver check FIRST - it is instant, and a too-old driver is the most common
-# cause of the Vulkan failure below. Verified working: 580.159.04.
-# Verified BROKEN: 570.195.03 (all libs present, CUDA fine, vkCreateInstance
-# still fails inside the driver). Filter for CUDA 13.0 when deploying to get 580+.
+# Driver check is informational. NOTE: an earlier version of this script blamed
+# driver 570.195.03 for a Vulkan failure. That was WRONG - the real cause was
+# missing libegl1/libglx0/libopengl0 (see STEP 1). The same failure reproduced
+# on driver 580.126.20 and was fixed by the packages, not by the driver.
 DRV=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1)
 DRV_MAJOR=${DRV%%.*}
 log "  driver: ${DRV:-unknown}"
 if [ -n "$DRV_MAJOR" ] && [ "$DRV_MAJOR" -lt 580 ] 2>/dev/null; then
     log "  WARNING: driver $DRV is below 580. Isaac Sim 5.1 wants 580.65.06+."
-    log "           Driver 570 has been observed to fail Vulkan init on RunPod"
-    log "           even with a complete library set. If the check below fails,"
-    log "           redeploy the pod filtering for CUDA 13.0 (-> driver 580+)."
+    log "           Documented minimum is 535.129, so this may well work."
 fi
 
 # Must be exactly ONE device. The NVIDIA ICD already ships at /etc/vulkan/icd.d/
@@ -54,10 +57,10 @@ elif [ "$N" -eq 0 ]; then
     log "    3. ldconfig -p | grep libvulkan    - is the loader installed?"
     log "    4. vulkaninfo --summary            - read the actual loader error"
     log ""
-    log "  If everything above looks CORRECT and it still fails, the driver"
-    log "  mount on this host is broken. Do not keep debugging - redeploy the"
-    log "  pod filtering for CUDA 13.0 to get driver 580+."
-    log "  Known good: 580.159.04.  Known bad: 570.195.03."
+    log "  MOST LIKELY CAUSE: missing libegl1 / libglx0 / libopengl0."
+    log "    apt-get install -y libglvnd0 libgl1 libegl1 libglx0 libopengl0"
+    log "  This produces exactly this error even with a complete NVIDIA driver"
+    log "  mount, working CUDA, and no missing deps reported by ldd."
     exit 1
 else
     log "  ERROR - $N devices. Duplicate ICDs; Kit will refuse to start."

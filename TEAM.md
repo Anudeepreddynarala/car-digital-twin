@@ -107,7 +107,7 @@ injects account keys into pods created *after* the key was added.
 | Everything washed out flat white | Lights overexposed | DistantLight ~1200 + DomeLight ~150, not 3500/800 |
 | Process dies the moment SSH returns | Backgrounding through SSH gets SIGHUP'd | `setsid nohup … < /dev/null &` — see `pod/run_drive.sh` |
 | `docker build` fails on the pod | RunPod pods have no Docker daemon | Build off-pod, or use pip |
-| Vulkan finds 0 devices although every NVIDIA lib is mounted and CUDA works | **Driver too old / bad mount.** Seen on 570.195.03 | Redeploy filtering **CUDA 13.0** → driver 580+. Known good: 580.159.04 |
+| Vulkan finds 0 devices although every NVIDIA lib is mounted and CUDA works | **Missing `libegl1` / `libglx0` / `libopengl0`.** `libgl1` alone is not enough | `apt-get install -y libglvnd0 libgl1 libegl1 libglx0 libopengl0` |
 | First `orchestrator.step()` returns nothing | Render product not populated yet | Burn one warmup step |
 | ROS 2 bridge error on startup | ROS 2 Jazzy not installed | Harmless; ignore |
 
