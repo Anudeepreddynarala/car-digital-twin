@@ -48,8 +48,11 @@ Python **exactly 3.11**, driver 580.65.06+, ~40 GB disk.
 
 | Script | What it does |
 |---|---|
+| `pod/depth_measure.py` | **Real measurement.** Range + size from depth-camera data, scored against ground truth |
 | `pod/drive_demo.py` | **Visible.** Car drives, chase camera follows, detection rays drawn live in the viewport |
-| `pod/perception_demo.py` | **Headless.** Prints class + range per object each step. Much faster |
+| `pod/perception_demo.py` | **Headless.** Prints class + range per object each step |
+| `pod/status.sh` | One-glance pod status: GPU, running demos, display stack, disk, latest output |
+| `pod/bootstrap.sh` | One command from bare pod to running demo |
 
 Both build their own scene — no asset downloads needed.
 
@@ -57,16 +60,49 @@ Validated against ground truth: with a car placed at x=10 m, a sensor at x=2 m
 reports **8.0 m**; at x=6 m → **4.1 m**; at x=10 m → **0.9 m**; the object drops
 out once passed.
 
-## What sensors is this actually using?
+## Real measurement, scored against ground truth
 
-**Right now: a camera plus the simulator's ground truth — not radar, not LiDAR.**
-Detections come from Replicator's `bounding_box_3d` annotator, which hands over
-each object's class and world position directly. That is *perfect* perception,
-i.e. cheating.
+`pod/depth_measure.py` measures range and size from **sensed data** - depth
+rendered off scene geometry, back-projected through the camera intrinsics into a
+point cloud - and scores it against the simulator's ground truth:
 
-This is deliberate. It builds the visualisation and gives you a **reference to
-score real sensors against** — something you cannot get on a real vehicle without
-survey-grade equipment. Real RTX radar and LiDAR come next, measured against it.
+```
+class      range      L      W      H      px   |  range      L      W      H     err
+------------------------------------------------------------------------------------
+person      7.96   0.63   0.48   1.89   32487   |   8.03   0.50   0.40   1.80   -0.07
+car         9.75  17.85   6.21   1.69   71216   |   9.79   4.50   1.80   1.50   -0.04
+tree       17.64   1.45   1.35   5.20   49080   |  17.77   1.20   1.20   5.00   -0.13
+building   33.38  10.91   9.29  12.21  127373   |  34.49  10.00   8.00  12.00   -1.11
+```
+
+Range error grows with distance - 7 cm at 8 m, 1.1 m at 34 m - because angular
+resolution puts fewer pixels on distant objects. That is real sensor physics, and
+quantifying it is the point of keeping ground truth alongside.
+
+`drive_demo.py` and `perception_demo.py` still use the `bounding_box_3d`
+annotator, which reads the scene graph directly. That is *perfect* perception,
+i.e. cheating - kept deliberately as the scoring reference.
+
+### Known issues
+
+- **Two cars merge into one measurement** (reads 17.85 m long). Grouping is by
+  semantic *class*; it needs `instance_segmentation` to separate objects.
+- **RTX LiDAR does not work.** See below.
+
+### RTX LiDAR: blocked
+
+Nine attempts, not working. `LidarRtx` accepts a config and silently produces a
+sensor with `numCols=0`, `horizontalFov=0`, `rotationRate=0`; referencing the
+sensor USD instead yields an `Xform` whose `OmniLidar` child is not found at
+traversal time. **Every failure mode is silent** - clean exit, empty arrays, no
+exception - so each run is ambiguous between several causes.
+
+What did produce real information: reading NVIDIA's own
+`isaacsim/sensors/rtx/tests/test_lidar_rtx.py`. Start there, not from the
+method names.
+
+The depth camera delivers the same measurement, so this is a fidelity upgrade
+rather than a blocker.
 
 You can already see why multiple sensors matter: the camera's ~47° FOV means an
 object more than ~23.5° off-axis is invisible. Watch the pedestrian in the demo —
@@ -76,11 +112,13 @@ stepping off the kerb.
 ## Roadmap
 
 - [x] Isaac Sim running, GUI, GPU verified
-- [x] Range + class per object, validated
+- [x] Range + class per object from ground truth, validated
 - [x] Visible driving demo with detection rays
-- [ ] RTX radar + stereo cameras, scored against ground truth
+- [x] **Real measurement from depth camera, scored against ground truth**
+- [ ] `instance_segmentation` so objects of the same class separate
+- [ ] Measurement on the moving car, updating live
+- [ ] RTX LiDAR / radar — blocked, see above
 - [ ] YOLO on the camera feed (PyTorch 2.7 ships with the install)
-- [ ] Traffic signs / signals / lanes — **blocked on road content**
 
 ### The one structural risk
 

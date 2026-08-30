@@ -110,6 +110,9 @@ injects account keys into pods created *after* the key was added.
 | Vulkan finds 0 devices although every NVIDIA lib is mounted and CUDA works | **Missing `libegl1` / `libglx0` / `libopengl0`.** `libgl1` alone is not enough | `apt-get install -y libglvnd0 libgl1 libegl1 libglx0 libopengl0` |
 | First `orchestrator.step()` returns nothing | Render product not populated yet | Burn one warmup step |
 | ROS 2 bridge error on startup | ROS 2 Jazzy not installed | Harmless; ignore |
+| Pod writes fail: `Disk quota exceeded` | Per-pod quota is far below the filesystem's advertised free space | `du -sh /workspace/*`, delete large dirs. Deleting many small files on the network volume is slow |
+| `pkill -f foo` kills your own shell | The pattern matches the ssh command containing it | Put the command in a script on disk (see `pod/run_*.sh`), and use `ps \| grep "[f]oo"` to check |
+| RTX lidar returns no points | Config never loads; `numCols=0` | Unsolved after 9 attempts - read `isaacsim/sensors/rtx/tests/test_lidar_rtx.py` first |
 
 ## Where the work goes next
 
