@@ -27,16 +27,29 @@ mkdir -p "$DEST"
 if [ -x "$DEST/CarlaUE4.sh" ]; then
     log "CARLA already present at $DEST - skipping ~20GB download"
 else
-    URL="https://github.com/carla-simulator/carla/releases/download/${CARLA_VERSION}/CARLA_${CARLA_VERSION}.tar.gz"
-    log "downloading CARLA ${CARLA_VERSION} (~20GB) from GitHub releases"
+    # CARLA is NOT hosted on GitHub releases - those carry no assets, only
+    # tiny.carla.org redirect links to a CDN. Resolved target:
+    URL="https://carla-releases.b-cdn.net/Linux/CARLA_${CARLA_VERSION}.tar.gz"
+    log "downloading CARLA ${CARLA_VERSION} (8.3GB) from the CARLA CDN"
     log "  $URL"
     if ! wget -q --show-progress -O "$DEST/carla.tar.gz" "$URL"; then
-        log "ERROR download failed. Check the exact asset name at:"
-        log "      https://github.com/carla-simulator/carla/releases"
+        log "ERROR download failed. Resolve the current link from:"
+        log "      https://tiny.carla.org/carla-0-9-16-linux"
         exit 1
     fi
     log "extracting"
     tar -xzf "$DEST/carla.tar.gz" -C "$DEST" && rm -f "$DEST/carla.tar.gz"
+fi
+
+# Optional: AdditionalMaps (14.8GB) adds Town06/07/11/12/13/15. Town10HD -
+# the detailed urban map - is already in the base package, so this is skipped
+# by default. Set CARLA_EXTRA_MAPS=1 to fetch it.
+if [ "${CARLA_EXTRA_MAPS:-0}" = "1" ] && [ ! -f "$DEST/.extra_maps_done" ]; then
+    log "downloading AdditionalMaps (14.8GB)"
+    wget -q --show-progress -O "$DEST/maps.tar.gz" \
+        "https://carla-releases.b-cdn.net/Linux/AdditionalMaps_${CARLA_VERSION}.tar.gz" \
+      && tar -xzf "$DEST/maps.tar.gz" -C "$DEST" && rm -f "$DEST/maps.tar.gz" \
+      && touch "$DEST/.extra_maps_done"
 fi
 
 log "python client library"
